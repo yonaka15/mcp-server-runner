@@ -1,0 +1,13 @@
+[package]
+name = "mcp-server-runner"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+tokio = { version = "1.0", features = ["full"] }
+tokio-tungstenite = "0.20"
+futures-util = "0.3"
+log = "0.4"
+env_logger = "0.10"
+anyhow = "1.0"
+

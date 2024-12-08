@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>MCP WebSocket Test Client</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/json-formatter/0.7.2/json-formatter.min.js"></script>
+    <style>
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+          "Helvetica Neue", Arial, sans-serif;
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 20px;
+        background: #f5f5f5;
+      }
+      .container {
+        background: white;
+        padding: 20px;
+        border-radius: 8px;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+      }
+      .status {
+        padding: 10px;
+        margin-bottom: 20px;
+        border-radius: 4px;
+      }
+      .status.connected {
+        background-color: #d4edda;
+        color: #155724;
+        border: 1px solid #c3e6cb;
+      }
+      .status.disconnected {
+        background-color: #f8d7da;
+        color: #721c24;
+        border: 1px solid #f5c6cb;
+      }
+      .message-box {
+        margin: 20px 0;
+      }
+      .message-input {
+        width: 100%;
+        height: 100px;
+        margin: 10px 0;
+        padding: 10px;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        font-family: monospace;
+      }
+      .button {
+        background-color: #007bff;
+        color: white;
+        border: none;
+        padding: 10px 20px;
+        border-radius: 4px;
+        cursor: pointer;
+      }
+      .button:hover {
+        background-color: #0056b3;
+      }
+      .button:disabled {
+        background-color: #ccc;
+        cursor: not-allowed;
+      }
+      .log {
+        margin-top: 20px;
+        border: 1px solid #ddd;
+        padding: 10px;
+        border-radius: 4px;
+        background: #f8f9fa;
+        height: 400px;
+        overflow-y: auto;
+      }
+      .log-entry {
+        margin: 5px 0;
+        padding: 5px;
+        border-bottom: 1px solid #eee;
+      }
+      .log-entry.sent {
+        color: #004085;
+        background-color: #cce5ff;
+      }
+      .log-entry.received {
+        color: #155724;
+        background-color: #d4edda;
+      }
+      .log-entry.error {
+        color: #721c24;
+        background-color: #f8d7da;
+      }
+      #requestTemplates {
+        margin-bottom: 20px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h1>MCP WebSocket Test Client</h1>
+
+      <div id="connectionStatus" class="status disconnected">Disconnected</div>
+
+      <div class="connection-controls">
+        <input
+          type="text"
+          id="wsUrl"
+          value="ws://localhost:3000"
+          style="width: 200px; margin-right: 10px"
+        />
+        <button id="connectButton" class="button">Connect</button>
+        <button id="disconnectButton" class="button" disabled>
+          Disconnect
+        </button>
+      </div>
+
+      <div class="message-box">
+        <h3>Request Templates</h3>
+        <select id="requestTemplates" style="width: 100%; padding: 5px">
+          <option value="initialize">Initialize</option>
+          <option value="ping">Ping</option>
+          <option value="resourcesList">List Resources</option>
+          <option value="toolsList">List Tools</option>
+          <option value="promptsList">List Prompts</option>
+        </select>
+        <h3>Message</h3>
+        <textarea
+          id="messageInput"
+          class="message-input"
+          placeholder="Enter JSON message"
+        ></textarea>
+        <button id="sendButton" class="button" disabled>Send Message</button>
+      </div>
+
+      <div class="log" id="messageLog"></div>
+    </div>
+
+    <script>
+      let ws = null;
+      let nextRequestId = 1;
+
+      const templates = {
+        initialize: {
+          jsonrpc: "2.0",
+          method: "initialize",
+          id: 1,
+          params: {
+            protocolVersion: "2024-11-05",
+            capabilities: {
+              sampling: {},
+            },
+            clientInfo: {
+              name: "Web Test Client",
+              version: "1.0.0",
+            },
+          },
+        },
+        ping: {
+          jsonrpc: "2.0",
+          method: "ping",
+          id: 1,
+        },
+        resourcesList: {
+          jsonrpc: "2.0",
+          method: "resources/list",
+          id: 1,
+        },
+        toolsList: {
+          jsonrpc: "2.0",
+          method: "tools/list",
+          id: 1,
+        },
+        promptsList: {
+          jsonrpc: "2.0",
+          method: "prompts/list",
+          id: 1,
+        },
+      };
+
+      function updateConnectionStatus(connected) {
+        const statusDiv = document.getElementById("connectionStatus");
+        const connectButton = document.getElementById("connectButton");
+        const disconnectButton = document.getElementById("disconnectButton");
+        const sendButton = document.getElementById("sendButton");
+
+        statusDiv.textContent = connected ? "Connected" : "Disconnected";
+        statusDiv.className = `status ${
+          connected ? "connected" : "disconnected"
+        }`;
+
+        connectButton.disabled = connected;
+        disconnectButton.disabled = !connected;
+        sendButton.disabled = !connected;
+      }
+
+      function addLogEntry(message, type = "received") {
+        const logDiv = document.getElementById("messageLog");
+        const entry = document.createElement("div");
+        entry.className = `log-entry ${type}`;
+
+        try {
+          let jsonData = message;
+          if (typeof message === "string") {
+            jsonData = JSON.parse(message);
+          }
+          const formatter = new JSONFormatter(jsonData, 2, {
+            hoverPreviewEnabled: true,
+            hoverPreviewArrayCount: 100,
+            hoverPreviewFieldCount: 5,
+          });
+          entry.appendChild(formatter.render());
+        } catch (e) {
+          console.error("Failed to format message:", e);
+          entry.innerHTML = `<pre>${
+            typeof message === "object"
+              ? JSON.stringify(message, null, 2)
+              : String(message)
+          }</pre>`;
+        }
+
+        logDiv.appendChild(entry);
+        logDiv.scrollTop = logDiv.scrollHeight;
+      }
+
+      function connect() {
+        const url = document.getElementById("wsUrl").value;
+        try {
+          ws = new WebSocket(url);
+
+          ws.onopen = () => {
+            updateConnectionStatus(true);
+            addLogEntry("WebSocket connection established", "received");
+          };
+
+          ws.onclose = () => {
+            updateConnectionStatus(false);
+            addLogEntry("WebSocket connection closed", "error");
+            ws = null;
+          };
+
+          ws.onerror = (error) => {
+            addLogEntry(`WebSocket error: ${error}`, "error");
+          };
+
+          ws.onmessage = (event) => {
+            // イベントデータがJSON形式の文字列でない場合に備えて処理
+            let data = event.data;
+            try {
+              // オブジェクトが文字列化されていない場合は文字列化
+              if (typeof data === "object") {
+                data = JSON.stringify(data);
+              }
+              // 文字列をJSONとしてパースしてフォーマット
+              const jsonData = JSON.parse(data);
+              addLogEntry(jsonData, "received");
+            } catch (e) {
+              // JSONとしてパースできない場合は生のデータを表示
+              console.error("Failed to parse message:", e);
+              addLogEntry(
+                {
+                  error: "Failed to parse message",
+                  data: data,
+                  details: e.toString(),
+                },
+                "error"
+              );
+            }
+          };
+        } catch (error) {
+          addLogEntry(`Failed to connect: ${error}`, "error");
+        }
+      }
+
+      function disconnect() {
+        if (ws) {
+          ws.close();
+        }
+      }
+
+      function sendMessage() {
+        if (!ws) {
+          addLogEntry("Not connected to server", "error");
+          return;
+        }
+
+        try {
+          const messageInput = document.getElementById("messageInput");
+          const message = JSON.parse(messageInput.value);
+          ws.send(JSON.stringify(message));
+          addLogEntry(message, "sent");
+        } catch (error) {
+          addLogEntry(`Failed to send message: ${error}`, "error");
+        }
+      }
+
+      document.getElementById("connectButton").onclick = connect;
+      document.getElementById("disconnectButton").onclick = disconnect;
+      document.getElementById("sendButton").onclick = sendMessage;
+
+      document.getElementById("requestTemplates").onchange = (e) => {
+        const template = templates[e.target.value];
+        if (template) {
+          template.id = nextRequestId++;
+          document.getElementById("messageInput").value = JSON.stringify(
+            template,
+            null,
+            2
+          );
+        }
+      };
+
+      // 初期化時にテンプレートを選択
+      document
+        .getElementById("requestTemplates")
+        .dispatchEvent(new Event("change"));
+    </script>
+  </body>
+</html>
