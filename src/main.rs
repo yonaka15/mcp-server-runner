@@ -1,17 +1,20 @@
 use anyhow::{Context, Result};
-use log::{error, info, warn};
+use log::{debug, error, info, warn};
 use std::env;
 use std::sync::atomic::Ordering;
 use tokio::net::TcpListener;
 use tokio::sync::mpsc;
 
 use mcp_server_runner::{
-    handle_connection, shutdown_signal, ProcessManager, MESSAGE_BUFFER_SIZE, CONNECTED, SHUTDOWN,
+    handle_connection, shutdown_signal, ProcessManager, CONNECTED, MESSAGE_BUFFER_SIZE, SHUTDOWN,
 };
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    env_logger::init_from_env(env_logger::Env::default().default_filter_or("info"));
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("debug"))
+        .format_timestamp_millis()
+        .format_target(true)
+        .init();
 
     let program = env::var("PROGRAM").context("PROGRAM environment variable not set")?;
     let args = env::var("ARGS")
@@ -30,47 +33,74 @@ async fn main() -> Result<()> {
     let addr = format!("{}:{}", host, port);
 
     let listener = TcpListener::bind(&addr).await?;
-    info!("WebSocket server started: {}", &addr);
-    info!("Command to execute: {} {:?}", program, args);
+    info!(
+        "WebSocket server started: {} (Program: {}, Args: {:?})",
+        &addr, program, args
+    );
 
     let mut process_manager = ProcessManager::new();
+    debug!("Process manager initialized");
 
     let shutdown_handle = tokio::spawn(shutdown_signal());
+    debug!("Shutdown handler initialized");
 
     let server = async {
         while let Ok((stream, addr)) = listener.accept().await {
             if SHUTDOWN.load(Ordering::SeqCst) {
+                info!("Shutdown signal received, stopping server");
                 break;
             }
 
             if CONNECTED.load(Ordering::SeqCst) {
-                warn!("Connection already established. Rejecting new connection: {}", addr);
+                warn!(
+                    "Connection rejected: Already have an active connection from: {}",
+                    addr
+                );
                 continue;
             }
 
-            info!("New client connection: {}", addr);
+            info!("New client connection accepted: {}", addr);
+            debug!(
+                "Client connection details - Local addr: {:?}, Peer addr: {:?}",
+                stream.local_addr(),
+                stream.peer_addr()
+            );
 
             let (ws_tx, ws_rx) = mpsc::channel(MESSAGE_BUFFER_SIZE);
+            debug!(
+                "Created message channels with buffer size: {}",
+                MESSAGE_BUFFER_SIZE
+            );
 
             let process_tx = match process_manager
                 .start_process(&program, &args, &env_vars, ws_tx.clone())
                 .await
             {
-                Ok(tx) => tx,
+                Ok(tx) => {
+                    info!("Successfully started child process");
+                    tx
+                }
                 Err(e) => {
-                    error!("Failed to start process: {}", e);
+                    error!(
+                        "Failed to start process: {}. Connection will be rejected",
+                        e
+                    );
                     continue;
                 }
             };
 
+            debug!("Spawning connection handler for client: {}", addr);
             tokio::spawn(handle_connection(stream, process_tx, ws_rx));
+            info!("Connection handler spawned for client: {}", addr);
         }
     };
 
     tokio::select! {
-        _ = server => {},
+        _ = server => {
+            debug!("Server loop terminated");
+        },
         _ = shutdown_handle => {
-            info!("Initiating shutdown...");
+            info!("Initiating shutdown sequence...");
             process_manager.shutdown().await;
             info!("Shutdown complete");
         }

@@ -1,6 +1,15 @@
 # MCP Server Runner
 
-A WebSocket server implementation for running Model Context Protocol (MCP) servers. This application enables MCP servers to be accessed via WebSocket connections, facilitating integration with web applications and other network-enabled clients.
+> **Note**: This project is currently under active development and in WIP (Work In Progress) status. Features and APIs may change significantly.
+
+A WebSocket server implementation for running [Model Context Protocol](https://github.com/modelcontextprotocol) (MCP) servers. This application enables MCP servers to be accessed via WebSocket connections, facilitating integration with web applications and other network-enabled clients.
+
+## Development Status
+
+- 🚧 **Work In Progress**: This software is in active development
+- ⚠️ **API Stability**: APIs and features may change without notice
+- 🧪 **Testing**: Currently undergoing testing and refinement
+- 📝 **Documentation**: Documentation is being actively updated
 
 ## Overview
 
@@ -43,9 +52,9 @@ Additional environment variables will be passed through to the MCP server proces
 1. Set up the environment variables:
 
    ```bash
-   export PROGRAM=/path/to/mcp-server
-   export ARGS=arg1,arg2
+   export ARGS=-y,@modelcontextprotocol/server-github
    export PORT=8080
+   export GITHUB_PERSONAL_ACCESS_TOKEN=github_pat_***
    ```
 
 2. Run the server:
@@ -125,4 +134,3 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 - [Model Context Protocol Specification](https://github.com/modelcontextprotocol/specification)
 - [WebSocket Protocol (RFC 6455)](https://tools.ietf.org/html/rfc6455)
-

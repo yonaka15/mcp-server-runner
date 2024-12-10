@@ -1,4 +1,4 @@
-use log::{debug, error};
+use log::{debug, error, info, warn};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader, BufWriter};
 use tokio::process::{ChildStdin, ChildStdout, ChildStderr};
 use tokio::sync::mpsc;
@@ -11,18 +11,22 @@ pub async fn handle_stdin(
     mut process_rx: mpsc::Receiver<String>,
 ) {
     let mut writer = BufWriter::new(stdin);
+    debug!("Started stdin handler for child process");
 
     while let Some(message) = process_rx.recv().await {
         if SHUTDOWN.load(Ordering::SeqCst) {
+            debug!("Shutdown signal received, stopping stdin handler");
             break;
         }
 
+        debug!("Received message to send to process. Length: {}", message.len());
         if let Err(e) = write_to_process(&mut writer, &message).await {
-            error!("Error in stdin handling: {}", e);
+            error!("Error in stdin handling: {}. Message was: {}", e, message);
             break;
         }
+        debug!("Successfully wrote message to process");
     }
-    debug!("Stdin handler finished");
+    info!("Stdin handler finished");
 }
 
 pub async fn handle_stdout(
@@ -31,49 +35,57 @@ pub async fn handle_stdout(
 ) {
     let mut reader = BufReader::new(stdout);
     let mut line = String::new();
+    debug!("Started stdout handler for child process");
 
     while let Ok(n) = reader.read_line(&mut line).await {
         if should_stop(n) {
+            debug!("Stopping stdout handler: {}", 
+                if n == 0 { "EOF reached" } else { "shutdown requested" });
             break;
         }
 
         let trimmed = line.trim().to_string();
-        debug!("Received from process (stdout): {}", trimmed);
+        debug!("Received from process (stdout) - Length: {}, Content: {}", 
+            trimmed.len(), trimmed);
 
         if let Err(e) = websocket_tx.send(trimmed).await {
             error!("Error sending to WebSocket: {}", e);
             break;
         }
+        debug!("Successfully sent process output to WebSocket");
         line.clear();
     }
-    debug!("Stdout handler finished");
+    info!("Stdout handler finished");
 }
 
 pub async fn handle_stderr(stderr: ChildStderr) {
     let mut reader = BufReader::new(stderr);
     let mut line = String::new();
+    debug!("Started stderr handler for child process");
 
     while let Ok(n) = reader.read_line(&mut line).await {
         if should_stop(n) {
+            debug!("Stopping stderr handler: {}", 
+                if n == 0 { "EOF reached" } else { "shutdown requested" });
             break;
         }
 
         let trimmed = line.trim();
-        // Log error messages from the process
-        error!("Process error: {}", trimmed);
+        warn!("Process stderr: {}", trimmed);
         line.clear();
     }
-    debug!("Stderr handler finished");
+    info!("Stderr handler finished");
 }
 
 async fn write_to_process(
     writer: &mut BufWriter<ChildStdin>,
     message: &str,
 ) -> tokio::io::Result<()> {
-    debug!("Sending to process: {}", message);
+    debug!("Writing to process - Length: {}, Content: {}", message.len(), message);
     writer.write_all(message.as_bytes()).await?;
     writer.write_all(b"\n").await?;
     writer.flush().await?;
+    debug!("Successfully flushed message to process");
     Ok(())
 }
 
