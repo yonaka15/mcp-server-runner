@@ -52,6 +52,7 @@ Additional environment variables will be passed through to the MCP server proces
 1. Set up the environment variables:
 
    ```bash
+   export PROGRAM=npx
    export ARGS=-y,@modelcontextprotocol/server-github
    export PORT=8080
    export GITHUB_PERSONAL_ACCESS_TOKEN=github_pat_***
