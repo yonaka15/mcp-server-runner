@@ -36,32 +36,83 @@ MCP Server Runner acts as a bridge between WebSocket clients and MCP server impl
 
 ## Configuration
 
-The application is configured through environment variables:
+### Environment Variables
+
+The application can be configured through environment variables:
 
 ```env
-PROGRAM=        # Path to the MCP server executable (required)
+PROGRAM=        # Path to the MCP server executable (required if no config file)
 ARGS=           # Comma-separated list of arguments for the MCP server
 HOST=0.0.0.0    # Host address to bind to (default: 0.0.0.0)
 PORT=8080       # Port to listen on (default: 8080)
+CONFIG_FILE=    # Path to JSON configuration file
 ```
 
 Additional environment variables will be passed through to the MCP server process.
 
+### JSON Configuration
+
+Alternatively, you can provide a JSON configuration file:
+
+```json
+{
+  "servers": {
+    "filesystem": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-filesystem",
+        "/path/to/workspace"
+      ]
+    },
+    "github": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-github"],
+      "env": {
+        "GITHUB_PERSONAL_ACCESS_TOKEN": "your_token_here"
+      }
+    }
+  },
+  "default_server": "filesystem",
+  "host": "0.0.0.0",
+  "port": 8080
+}
+```
+
+You can specify the configuration file in two ways:
+
+1. As a command-line argument: `mcp-server-runner config.json`
+2. Using the `CONFIG_FILE` environment variable: `CONFIG_FILE=config.json mcp-server-runner`
+
+The JSON configuration allows you to define multiple server configurations and select one as the default.
+
+### Configuration Priority
+
+1. Command-line specified config file
+2. `CONFIG_FILE` environment variable
+3. Environment variables (`PROGRAM`, `ARGS`, etc.)
+4. Default values
+
 ## Usage
 
-1. Set up the environment variables:
+1. Using environment variables:
 
    ```bash
    export PROGRAM=npx
    export ARGS=-y,@modelcontextprotocol/server-github
    export PORT=8080
    export GITHUB_PERSONAL_ACCESS_TOKEN=github_pat_***
+   cargo run
    ```
 
-2. Run the server:
+2. Using a configuration file:
 
    ```bash
-   cargo run
+   # Either specify the config file as an argument
+   cargo run config.json
+
+   # Or use the CONFIG_FILE environment variable
+   CONFIG_FILE=config.json cargo run
    ```
 
 3. Connect to the WebSocket server:
@@ -102,6 +153,7 @@ RUST_LOG=debug cargo run
 The application follows a modular architecture:
 
 - `main.rs`: Application entry point and server setup
+- `config/`: Configuration loading and management
 - `process/`: Process management and I/O handling
 - `websocket/`: WebSocket connection management
 - `state.rs`: Global state management

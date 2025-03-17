@@ -1,0 +1,15 @@
+{
+  "servers": {
+    "github": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-github"],
+      "env": {
+        "GITHUB_PERSONAL_ACCESS_TOKEN": "your_token_here"
+      }
+    }
+  },
+  "default_server": "github",
+  "host": "0.0.0.0",
+  "port": 8080
+}
+
