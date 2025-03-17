@@ -1,5 +1,6 @@
 use anyhow::{Context, Result};
 use log::{debug, error};
+use std::collections::HashMap;
 use tokio::process::{Child, Command};
 use tokio::sync::mpsc;
 
@@ -19,7 +20,7 @@ impl ProcessManager {
         &mut self,
         program: &str,
         args: &[String],
-        env_vars: &Vec<(String, String)>,
+        env_vars: &HashMap<String, String>,
         websocket_tx: mpsc::Sender<String>,
     ) -> Result<mpsc::Sender<String>> {
         let child = self.spawn_process(program, args, env_vars)?;
@@ -34,9 +35,10 @@ impl ProcessManager {
         &mut self,
         program: &str,
         args: &[String],
-        env_vars: &Vec<(String, String)>,
+        env_vars: &HashMap<String, String>,
     ) -> Result<Child> {
         let mut command = Command::new(program);
+        
         if !args.is_empty() {
             command.args(args);
         }
@@ -45,6 +47,8 @@ impl ProcessManager {
             command.env(key, value);
         }
 
+        debug!("Spawning process: {} {:?}", program, args);
+        
         let child = command
             .stdin(std::process::Stdio::piped())
             .stdout(std::process::Stdio::piped())
